@@ -1,0 +1,22 @@
+{
+  "name": "mentionlytics-api",
+  "displayName": "Mentionlytics API",
+  "version": "1.0.0",
+  "description": "Query the Mentionlytics API (v2): mentions, sentiment, top influencers, trending keywords, geo/language breakdowns, AI daily summaries, analytics (EMV, MQI), trackers, and account usage — with built-in auth rotation and rate-limit handling.",
+  "author": {
+    "name": "Mentionlytics",
+    "url": "https://www.mentionlytics.com"
+  },
+  "homepage": "https://github.com/mentionlytics/mentionlytics-claude-skills",
+  "repository": "https://github.com/mentionlytics/mentionlytics-claude-skills",
+  "license": "MIT",
+  "keywords": [
+    "mentionlytics",
+    "social-listening",
+    "brand-monitoring",
+    "api",
+    "mentions",
+    "sentiment-analysis",
+    "share-of-voice"
+  ]
+}

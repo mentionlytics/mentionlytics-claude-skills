@@ -1,0 +1,24 @@
+{
+  "name": "mentionlytics-skills",
+  "displayName": "Mentionlytics Skills",
+  "owner": {
+    "name": "Mentionlytics",
+    "url": "https://www.mentionlytics.com"
+  },
+  "metadata": {
+    "description": "Official Mentionlytics skills for Claude: work with the Mentionlytics API for social listening and brand monitoring data.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "mentionlytics-api",
+      "description": "Query the Mentionlytics API (v2): mentions, top influencers, trending keywords, geo/language breakdowns, AI summaries, analytics (EMV, MQI), trackers, and usage — with auth rotation and rate-limit handling built in.",
+      "source": "./plugins/mentionlytics-api",
+      "category": "productivity",
+      "version": "1.0.0",
+      "author": { "name": "Mentionlytics" },
+      "homepage": "https://github.com/mentionlytics/mentionlytics-claude-skills",
+      "keywords": ["mentionlytics", "social-listening", "brand-monitoring", "api"]
+    }
+  ]
+}
