@@ -25,7 +25,7 @@ The skill never hardcodes or prints tokens.
 - "Pull the top 20 influencers mentioning my brand this month from the Mentionlytics API"
 - "Write a Python script that fetches yesterday's mentions and groups them by sentiment"
 - "What's the trending hashtag breakdown for my competitors tracker over the last 7 days?"
-- "Check my Mentionlytics account usage and how close I am to my mention quota"
+- "Break down my brand mentions by country and language for last month"
 
 ## Skill structure
 

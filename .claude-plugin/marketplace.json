@@ -12,7 +12,7 @@
   "plugins": [
     {
       "name": "mentionlytics-api",
-      "description": "Query the Mentionlytics API (v2): mentions, top influencers, trending keywords, geo/language breakdowns, AI summaries, analytics (EMV, MQI), trackers, and usage — with auth rotation and rate-limit handling built in.",
+      "description": "Query the Mentionlytics API (v2): mentions, top influencers, trending keywords, geo/language breakdowns, AI summaries, analytics (EMV, MQI), trackers, and tracker groups — with auth rotation and rate-limit handling built in.",
       "source": "./plugins/mentionlytics-api",
       "category": "productivity",
       "version": "1.0.0",

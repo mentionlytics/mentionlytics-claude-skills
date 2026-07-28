@@ -24,10 +24,14 @@ The old refresh token is invalidated the instant a new one is issued (rotation p
 
 ## Rate limiting (two independent layers per API key)
 
+Both layers are checked independently and scoped **per bearer token (account)**.
+
 | Layer | Window | Max requests | 429 `error` value | Strategy |
 | :--- | :--- | :--- | :--- | :--- |
-| Burst protection | 1 second | 20 | `burst_limit_exceeded` | Short pause (~250–500ms), immediate retry |
-| Sustained limit | 60 seconds | 100 | `rate_limit_exceeded` | Exponential backoff |
+| Burst protection | 1 second | 10 (default) | `burst_limit_exceeded` | Short pause (~250–500ms), immediate retry |
+| Sustained limit | 60 seconds | per `RateLimit-Limit` header | `rate_limit_exceeded` | Exponential backoff |
+
+The sustained ceiling is plan/config-dependent and is not a fixed constant — read the current allowance from the `RateLimit-Limit` response header rather than assuming a value.
 
 **429 error JSON shape:**
 

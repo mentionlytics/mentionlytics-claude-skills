@@ -1,11 +1,11 @@
 ---
 name: api-navigator
-description: Query the Mentionlytics API (v2) to fetch, filter, and analyze social listening data - mentions, sentiment, top influencers, trending keywords, geographic and language breakdowns, AI daily summaries, analytics stats (EMV, MQI), audience demographics, trackers, and account usage. This skill should be used whenever the user wants to work with the Mentionlytics API, pull brand mentions or monitoring data programmatically, build an integration or script against api.mentionlytics.com, or asks about Mentionlytics endpoints, authentication, tokens, or rate limits.
+description: Query the Mentionlytics API (v2) to fetch, filter, and analyze social listening data - mentions, sentiment, top influencers, trending keywords, geographic and language breakdowns, AI daily summaries, analytics stats (EMV, MQI), audience demographics, trackers, and tracker groups. This skill should be used whenever the user wants to work with the Mentionlytics API, pull brand mentions or monitoring data programmatically, build an integration or script against api.mentionlytics.com, or asks about Mentionlytics endpoints, authentication, tokens, or rate limits.
 ---
 
 # Mentionlytics API Navigator
 
-Operational guide for interacting with the Mentionlytics API (v2.0.8) to fetch, filter, and analyze social media monitoring data.
+Operational guide for interacting with the Mentionlytics API (v2) to fetch, filter, and analyze social media monitoring data.
 
 ## Base Configuration
 
@@ -47,17 +47,21 @@ Map user intent to the correct endpoint. Full parameter details for each endpoin
 | High-level analytics (EMV, MQI) | `GET` | `/v2/mentions/stats` |
 | FB/IG audience demographics | `GET` | `/v2/mentions/audience-demographics` |
 | Tracker groups | `GET` | `/v2/tracker-groups/list` |
-| Active trackers (keyword/profile) | `GET` | `/v2/trackers/list` |
-| Subscription quota and usage | `GET` | `/v2/account/usage` |
+| Active trackers (keyword/profile/location) | `GET` | `/v2/trackers/list` |
 
 ## Core Parameter Rules
 
-- **Dates** (`startDate` / `endDate`): format `YYYYMMDD` (e.g. `20240520`). Defaults: startDate = 7 days ago, endDate = today.
-- **Relevance** (`relevance`): `all` | `low` (≥0.25) | `normal` (≥0.5) | `strict` (≥0.75).
-- **Trackers** (`trackers`): `brandmonitoring` | `competitors` | `leads` | `all` | comma-separated tracker IDs.
-- **Ordering** (`ordering`): `time` | `rank` | `engagement` | `engagement_nv` (without views).
+- **Dates** (`startDate` / `endDate`): format `YYYYMMDD` (e.g. `20240520`). Defaults: startDate = 7 days ago, endDate = today. **Exception:** `/v2/mentions/audience-demographics` accepts only `endDate` (no `startDate`).
+- **Relevance** (`relevance`): `all` | `low` (≥0.25) | `normal` (≥0.5) | `strict` (≥0.75). Default `normal`.
+- **Trackers** (`trackers`): `brandmonitoring` | `competitors` | `leads` | `all` | comma-separated tracker IDs. Default `brandmonitoring`. **Exception:** `/v2/mentions/top/summary/daily` accepts only `brandmonitoring` | `competitors` | `all` (no `leads`).
+- **Common filters** (accepted by `/v2/mentions*` analytics endpoints): `sentiment`, `emotion`, `contentType`, `country`, `language`, `trackerGroups`, `preset`, `fields`. Full per-endpoint tables are in `references/endpoints.md`.
+- **Ordering** (`ordering`) — ⚠️ **the allowed values and default differ by endpoint. Do NOT assume one value set.** Two families:
+  - **`/v2/mentions`** (individual mentions): `time` (default) | `rank` | `engagement` | `engagement_nv`.
+  - **Top-lists** (`top/mentioners`, `top/keywords`, `top/countries`, `top/languages`): `mentions` | `reach` | `engagement` | `engagement_nv`. Defaults: `reach` for mentioners, `mentions` for countries/languages. These endpoints also take `sortDesc` (boolean, default true).
+
+  `engagement` = likes + shares + comments + views (excludes X/Twitter views); `engagement_nv` = engagement without views. Always confirm the endpoint's value set in `references/endpoints.md` before setting `ordering`.
 - **Channels** (`channels`): comma-separated integers. Look up the channel ID and category token mappings in `references/channels-categories.md` whenever the user filters by platform (e.g. "only Instagram", "Reddit posts", "reviews").
-- `/v2/mentions` uses **timestamp-based cursor pagination** via `results_after`; top-lists use `page` / `per_page` (max 100).
+- **Pagination differs by endpoint:** `/v2/mentions` uses **timestamp-based cursor pagination** via `results_after` (with `per_page`, max 10000; no `page`). `top/mentioners` uses `page` + `per_page` (max 100). `top/keywords`, `top/countries`, `top/languages` use `limit` (max 10000). `top/summary/daily` uses `limit` (max 100).
 
 ## Rate Limits & Caching (must respect)
 
@@ -65,8 +69,10 @@ Two independent throttle layers per API key. Monitor `RateLimit-Limit`, `RateLim
 
 | Layer | Window | Max | On 429 (`error` field) | Strategy |
 | :--- | :--- | :--- | :--- | :--- |
-| Burst | 1 second | 20 req | `burst_limit_exceeded` | Short pause, retry |
-| Sustained | 60 seconds | 100 req | `rate_limit_exceeded` | Exponential backoff |
+| Burst | 1 second | 10 req (default) | `burst_limit_exceeded` | Short pause, retry |
+| Sustained | 60 seconds | per `RateLimit-Limit` | `rate_limit_exceeded` | Exponential backoff |
+
+Limits are enforced **per bearer token (account)**. The exact sustained ceiling is plan/config-dependent — read it from the `RateLimit-Limit` header rather than hardcoding a number.
 
 Successful responses are cached for **15 seconds** (per account + method + URL + params + body). Inspect `X-Cache` (`HIT`/`MISS`/`COALESCED`) and `X-Cache-Age`. When firing parallel calls, group identical-parameter requests within ~100ms to benefit from request coalescing.
 
