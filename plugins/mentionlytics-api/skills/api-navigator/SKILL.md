@@ -51,17 +51,17 @@ Map user intent to the correct endpoint. Full parameter details for each endpoin
 
 ## Core Parameter Rules
 
-- **Dates** (`startDate` / `endDate`): format `YYYYMMDD` (e.g. `20240520`). Defaults: startDate = 7 days ago, endDate = today. **Exception:** `/v2/mentions/audience-demographics` accepts only `endDate` (no `startDate`).
-- **Relevance** (`relevance`): `all` | `low` (≥0.25) | `normal` (≥0.5) | `strict` (≥0.75). Default `normal`.
-- **Trackers** (`trackers`): `brandmonitoring` | `competitors` | `leads` | `all` | comma-separated tracker IDs. Default `brandmonitoring`. **Exception:** `/v2/mentions/top/summary/daily` accepts only `brandmonitoring` | `competitors` | `all` (no `leads`).
-- **Common filters** (accepted by `/v2/mentions*` analytics endpoints): `sentiment`, `emotion`, `contentType`, `country`, `language`, `trackerGroups`, `preset`, `fields`. Full per-endpoint tables are in `references/endpoints.md`.
-- **Ordering** (`ordering`) — ⚠️ **the allowed values and default differ by endpoint. Do NOT assume one value set.** Two families:
-  - **`/v2/mentions`** (individual mentions): `time` (default) | `rank` | `engagement` | `engagement_nv`.
-  - **Top-lists** (`top/mentioners`, `top/keywords`, `top/countries`, `top/languages`): `mentions` | `reach` | `engagement` | `engagement_nv`. Defaults: `reach` for mentioners, `mentions` for countries/languages. These endpoints also take `sortDesc` (boolean, default true).
+Full per-endpoint tables (params, defaults, response shapes) are in `references/endpoints.md` — read it before any non-trivial request.
 
-  `engagement` = likes + shares + comments + views (excludes X/Twitter views); `engagement_nv` = engagement without views. Always confirm the endpoint's value set in `references/endpoints.md` before setting `ordering`.
-- **Channels** (`channels`): comma-separated integers. Look up the channel ID and category token mappings in `references/channels-categories.md` whenever the user filters by platform (e.g. "only Instagram", "Reddit posts", "reviews").
-- **Pagination differs by endpoint:** `/v2/mentions` uses **timestamp-based cursor pagination** via `results_after` (with `per_page`, max 10000; no `page`). `top/mentioners` uses `page` + `per_page` (max 100). `top/keywords`, `top/countries`, `top/languages` use `limit` (max 10000). `top/summary/daily` uses `limit` (max 100).
+- **Dates** (`startDate` / `endDate`): `YYYYMMDD`. Defaults: 7 days ago / today. `audience-demographics` takes only `endDate`.
+- **Relevance**: `all` | `low` (≥0.25) | `normal` (≥0.5, default) | `strict` (≥0.75).
+- **Trackers**: `brandmonitoring` (default) | `competitors` | `leads` | `all` | comma-separated IDs. Exception: `top/summary/daily` has no `leads`.
+- **Other filters** on `/v2/mentions*`: `sentiment`, `emotion`, `contentType`, `country`, `language`, `trackerGroups`, `preset`, `fields`.
+- **Ordering** — ⚠️ **values & default differ by endpoint; do NOT assume one set:**
+  - `/v2/mentions`: `time` (default) | `rank` | `engagement` | `engagement_nv`
+  - top-lists (`mentioners`/`keywords`/`countries`/`languages`): `mentions` | `reach` | `engagement` | `engagement_nv` (default `reach` for mentioners, `mentions` for countries/languages) — plus `sortDesc`.
+- **Channels**: comma-separated IDs — see `references/channels-categories.md` when filtering by platform.
+- **Pagination differs:** `/v2/mentions` → cursor via `results_after` + `per_page` (no `page`); `top/mentioners` → `page` + `per_page`; other top-lists → `limit`.
 
 ## Rate Limits & Caching (must respect)
 
