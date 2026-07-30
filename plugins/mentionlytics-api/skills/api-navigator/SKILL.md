@@ -84,6 +84,6 @@ Content from X (Twitter), LinkedIn, and Web News may be subject to strict resear
 
 ## Reference Files
 
-- `references/endpoints.md` — per-endpoint parameters, limits, and example calls. Read before building any request beyond the basics.
+- `references/endpoints.md` — per-endpoint parameters, limits, example calls, and expected `200`/error response shapes. Read before building any request beyond the basics or validating a response.
 - `references/channels-categories.md` — channel ID enums and category filter tokens per platform. Read whenever filtering by source/platform.
 - `references/auth-rate-limits.md` — token rotation flow, 429 handling, caching and coalescing details. Read when writing retry logic or long-running scripts.
