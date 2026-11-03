@@ -12,14 +12,14 @@ Pass as comma-separated integer string (e.g. `channels=2,5`).
 | `4` | YouTube |
 | `5` | Instagram |
 | `7` | Reviews (Google, TripAdvisor, Booking, etc.) |
-| `99` | Other (LinkedIn, Reddit, TikTok, Pinterest, Telegram, Threads, Bluesky, Manual) |
+| `99` | Other (LinkedIn, Reddit, TikTok, Pinterest, Telegram, Threads, Bluesky, Podcasts, Manual) |
 
 ## Category Filter Tokens (`categories` parameter)
 
 Pass comma-separated tokens matching the channel definitions below.
 
 ### Web (channel 1)
-`news`, `blog`, `website`, `social`, `reference`, `community`, `shop`, `comments`
+`news`, `blog`, `website`, `social`, `reference`, `community`, `shop`
 
 ### Twitter/X (channel 2)
 `tweets`, `retweets`, `replies`, `quotes`, `twttag`
@@ -54,6 +54,9 @@ Pass comma-separated tokens matching the channel definitions below.
 ### Bluesky (channel 99)
 `blueskyposts`, `blueskyreplies`, `blueskyquotes`
 
+### Podcasts (channel 99)
+`podcast`, `spotify`
+
 ### Other (channel 99)
 `pinterest`, `quora`, `disqus`, `manual`
 
@@ -64,3 +67,7 @@ Pass comma-separated tokens matching the channel definitions below.
 ```
 GET /v2/mentions?channels=5,99&categories=instareels,tiktokposts,tiktokcomments
 ```
+
+## AI Visibility answers
+
+AI engine answers are not a channel and the mention endpoints don't return them. Read them with `/v2/answers`, filtered by `engines` (see `answers.md`).

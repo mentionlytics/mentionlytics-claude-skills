@@ -1,11 +1,11 @@
 ---
 name: api-navigator
-description: Query the Mentionlytics API (v2) to fetch, filter, and analyze social listening data - mentions, sentiment, top influencers, trending keywords, geographic and language breakdowns, AI daily summaries, analytics stats (EMV, MQI), audience demographics, trackers, and tracker groups. This skill should be used whenever the user wants to work with the Mentionlytics API, pull brand mentions or monitoring data programmatically, build an integration or script against api.mentionlytics.com, or asks about Mentionlytics endpoints, authentication, tokens, or rate limits.
+description: Query and manage a Mentionlytics account through the Mentionlytics API (v2) - mentions with sentiment, emotion, entities, translations and video analysis; top mentioners, keywords, countries and languages; AI daily summaries; analytics stats (EMV, MQI); audience demographics; AI Visibility answers, brand overview and citation analysis; tracker and tracker group lists; account usage; and creating, updating, pausing and deleting trackers and tracker groups. This skill should be used whenever the user wants to work with the Mentionlytics API, pull brand monitoring or AI visibility data programmatically, manage trackers through the API, build a script or integration against api.mentionlytics.com, or asks about Mentionlytics endpoints, tokens, rate limits or errors.
 ---
 
 # Mentionlytics API Navigator
 
-Operational guide for interacting with the Mentionlytics API (v2) to fetch, filter, and analyze social media monitoring data.
+Operational guide for the Mentionlytics API v2 (documentation version 2.1.17): reading mentions, analytics and AI Visibility answers, and managing trackers and tracker groups.
 
 ## Base Configuration
 
@@ -15,13 +15,15 @@ Operational guide for interacting with the Mentionlytics API (v2) to fetch, filt
   Authorization: Bearer <token>
   Content-Type: application/json
   ```
-- **Token source:** Read the bearer token from the `MENTIONLYTICS_API_TOKEN` environment variable (and `MENTIONLYTICS_REFRESH_TOKEN` for refresh). Never hardcode tokens in scripts, never print them in output, and never expose them in client-side or frontend code.
+  `Authorization` goes on every request except `POST /v2/auth/refresh`. `Content-Type` is needed on requests with a body.
+- **Token source:** read the bearer token from `MENTIONLYTICS_API_TOKEN` and the refresh token from `MENTIONLYTICS_REFRESH_TOKEN`. Users copy both from the web app: **Settings → Api/Access Tokens → User API Tokens**. Never hardcode tokens in scripts, print them, commit them, or put them in client-side or frontend code.
+- **Access:** the account's plan must include API access; otherwise every call answers `403 apiV2_not_available`. The answers endpoints also need AI Visibility, and the write endpoints need write access (see [Writing](#writing-beta)).
 
 ## Authentication (Dual-Token System)
 
-The API uses a short-lived **Bearer Token (1 hour)** and a long-lived **Refresh Token (30 days)**.
+The API uses a short-lived **bearer token (1 hour)** and a long-lived **refresh token (30 days)**.
 
-**On any `401 Unauthorized`:** immediately `POST /v2/auth/refresh` with the stored refresh token, then update BOTH tokens before retrying:
+**On any `401`:** `POST /v2/auth/refresh` with the stored refresh token, store BOTH returned tokens, then retry the original request once:
 
 ```bash
 curl -X POST "https://api.mentionlytics.com/v2/auth/refresh" \
@@ -29,61 +31,128 @@ curl -X POST "https://api.mentionlytics.com/v2/auth/refresh" \
   -d '{"refresh_token": "'"$MENTIONLYTICS_REFRESH_TOKEN"'"}'
 ```
 
-The old refresh token is invalidated the moment a new one is issued — always persist the new pair.
+The response is `{"bearer": "...", "refresh_token": "..."}`. The old refresh token stops working the moment it is used, so refresh from one place only: two processes refreshing with the same token lock one of them out (`401 token_revoked`). If the refresh itself fails with `401` (`invalid_refresh_token`, `token_expired`, `token_revoked`), stop and ask the user for new tokens from the web app. Never loop.
 
 ## Endpoint Routing Matrix
 
-Map user intent to the correct endpoint. Full parameter details for each endpoint are in `references/endpoints.md` — read it before constructing any non-trivial request.
+Map user intent to the endpoint, then read the reference file before building any non-trivial request.
 
-| User Intent | Method | Endpoint |
-| :--- | :--- | :--- |
-| Refresh expired access token | `POST` | `/v2/auth/refresh` |
-| Fetch individual mentions | `GET` | `/v2/mentions` |
-| Top profiles / influencers | `GET` | `/v2/mentions/top/mentioners` |
-| Trending keywords / hashtags | `GET` | `/v2/mentions/top/keywords` |
-| Geographic breakdown | `GET` | `/v2/mentions/top/countries` |
-| Language distribution | `GET` | `/v2/mentions/top/languages` |
-| AI-generated daily summaries | `GET` | `/v2/mentions/top/summary/daily` |
-| High-level analytics (EMV, MQI) | `GET` | `/v2/mentions/stats` |
-| FB/IG audience demographics | `GET` | `/v2/mentions/audience-demographics` |
-| Tracker groups | `GET` | `/v2/tracker-groups/list` |
-| Active trackers (keyword/profile/location) | `GET` | `/v2/trackers/list` |
+| User intent | Method | Endpoint | Reference |
+| :--- | :--- | :--- | :--- |
+| Renew an expired bearer token | `POST` | `/v2/auth/refresh` | `auth-rate-limits.md` |
+| Individual mentions (posts, articles, comments, reviews) | `GET` | `/v2/mentions` | `endpoints.md` |
+| Top profiles / influencers | `GET` | `/v2/mentions/top/mentioners` | `endpoints.md` |
+| Trending keywords / hashtags | `GET` | `/v2/mentions/top/keywords` | `endpoints.md` |
+| Mentions by country | `GET` | `/v2/mentions/top/countries` | `endpoints.md` |
+| Mentions by language | `GET` | `/v2/mentions/top/languages` | `endpoints.md` |
+| AI daily summaries of mention clusters | `GET` | `/v2/mentions/top/summary/daily` | `endpoints.md` |
+| Totals: mentions, reach, engagement, sentiment, EMV, MQI | `GET` | `/v2/mentions/stats` | `endpoints.md` |
+| Age/gender of owned Facebook/Instagram audiences | `GET` | `/v2/mentions/audience-demographics` | `endpoints.md` |
+| AI Visibility answers (ChatGPT, Gemini, Perplexity, …) | `GET` | `/v2/answers` | `answers.md` |
+| Brand visibility and share of voice in AI answers | `GET` | `/v2/answers/brand-overview` | `answers.md` |
+| Analysis of the pages an AI answer cites | `GET` | `/v2/answers/citation-analysis/{id}` | `answers.md` |
+| List tracker groups | `GET` | `/v2/tracker-groups/list` | `endpoints.md` |
+| List trackers (keyword, profile, location, prompt) | `GET` | `/v2/trackers/list` | `endpoints.md` |
+| Plan limits and current usage | `GET` | `/v2/account/usage` | `endpoints.md` |
+| Create a tracker group | `POST` | `/v2/tracker-groups/create` | `write-endpoints.md` |
+| Rename, recolor, pause or resume a tracker group | `PUT` | `/v2/tracker-groups/update/{id}` | `write-endpoints.md` |
+| Delete a tracker group and all its trackers | `DELETE` | `/v2/tracker-groups/delete/{id}` | `write-endpoints.md` |
+| Create a keyword tracker | `POST` | `/v2/trackers/create` | `write-endpoints.md` |
+| Change, move, pause or resume a tracker | `PUT` | `/v2/trackers/update/{id}` | `write-endpoints.md` |
+| Delete a tracker | `DELETE` | `/v2/trackers/delete/{id}` | `write-endpoints.md` |
+
+The three `/v2/answers*` endpoints and the six write endpoints are **beta**.
 
 ## Core Parameter Rules
 
-- **Dates** (`startDate` / `endDate`): format `YYYYMMDD` (e.g. `20240520`). Defaults: startDate = 7 days ago, endDate = today. **Exception:** `/v2/mentions/audience-demographics` accepts only `endDate` (no `startDate`).
-- **Relevance** (`relevance`): `all` | `low` (≥0.25) | `normal` (≥0.5) | `strict` (≥0.75). Default `normal`.
-- **Trackers** (`trackers`): `brandmonitoring` | `competitors` | `leads` | `all` | comma-separated tracker IDs. Default `brandmonitoring`. **Exception:** `/v2/mentions/top/summary/daily` accepts only `brandmonitoring` | `competitors` | `all` (no `leads`).
-- **Common filters** (accepted by `/v2/mentions*` analytics endpoints): `sentiment`, `emotion`, `contentType`, `country`, `language`, `trackerGroups`, `preset`, `fields`. Full per-endpoint tables are in `references/endpoints.md`.
-- **Ordering** (`ordering`) — ⚠️ **the allowed values and default differ by endpoint. Do NOT assume one value set.** Two families:
-  - **`/v2/mentions`** (individual mentions): `time` (default) | `rank` | `engagement` | `engagement_nv`.
-  - **Top-lists** (`top/mentioners`, `top/keywords`, `top/countries`, `top/languages`): `mentions` | `reach` | `engagement` | `engagement_nv`. Defaults: `reach` for mentioners, `mentions` for countries/languages. These endpoints also take `sortDesc` (boolean, default true).
+- **Parameters are NOT uniform.** `ordering` values, paging, defaults and accepted filters differ per endpoint. An unknown parameter or value answers `400`.
+- **Dates** (`startDate` / `endDate`): `YYYYMMDD`, from `20200101`; `startDate` at most tomorrow, `endDate` at most today. Default range: the last 7 days up to today (UTC). `/v2/mentions/audience-demographics` takes only `endDate`. `mention_ids` and `answer_ids` ignore the dates.
+- **Trackers** (`trackers`): `brandmonitoring` | `competitors` | `leads` (Industry & Topics groups) | `all` | comma-separated tracker IDs. Defaults: `brandmonitoring` on mention endpoints, `all` Prompt trackers on answers. `/v2/mentions/top/summary/daily` takes only `brandmonitoring` | `competitors` | `all`. `trackerGroups` takes comma-separated group IDs. Get IDs from the two list endpoints.
+- **Relevance** (`relevance`) means different things per family:
+  - mentions: `normal` (default, score ≥ 0.5) | `strict` (≥ 0.75) | `low` (only below 0.5, the mentions `normal` leaves out) | `all`;
+  - answers: `all` (default) | `normal` or `strict` (the answer names at least one of your brands) | `low` (it names none).
+- **Filters:** `sentiment` (`positive` | `neutral` | `negative`) and `emotion` (`joy` | `anger` | `sadness` | `fear` | `sarcasm` | `neutral`) take one value. `channels`, `categories`, `country`, `language` (ISO codes), `engines` and ID lists are comma-separated. `contentType`: `image` | `album` | `video` | `audio` | `link` | `webpage` | `text` | `other`. `preset` is the ID of a filter saved in the web app.
+- **Ordering** (`ordering`): ⚠️ two value sets, never mix them.
+  - `/v2/mentions`: `time` (default) | `rank` | `engagement` | `engagement_nv`.
+  - Top lists (`top/mentioners`, `top/keywords`, `top/countries`, `top/languages`): `mentions` | `reach` | `engagement` | `engagement_nv`, plus `sortDesc` (default `true`). Default `reach` for mentioners, `mentions` for the others.
 
-  `engagement` = likes + shares + comments + views (excludes X/Twitter views); `engagement_nv` = engagement without views. Always confirm the endpoint's value set in `references/endpoints.md` before setting `ordering`.
-- **Channels** (`channels`): comma-separated integers. Look up the channel ID and category token mappings in `references/channels-categories.md` whenever the user filters by platform (e.g. "only Instagram", "Reddit posts", "reviews").
-- **Pagination differs by endpoint:** `/v2/mentions` uses **timestamp-based cursor pagination** via `results_after` (with `per_page`, max 10000; no `page`). `top/mentioners` uses `page` + `per_page` (max 100). `top/keywords`, `top/countries`, `top/languages` use `limit` (max 10000). `top/summary/daily` uses `limit` (max 100).
+  `engagement` counts likes, shares, comments and views, except X/Twitter views; `engagement_nv` leaves views out.
+- **Channels and categories:** look up IDs and tokens in `references/channels-categories.md` whenever the user filters by platform. AI Visibility answers never come back from the mention endpoints; use `/v2/answers`.
+- **Fields** (`fields`, comma-separated) trims any response. Dotted names select nested fields (`profile.name`, `metrics.engagement`); lists such as `translations`, `brands` and `citations` are selected whole. On `/v2/mentions` without `fields`, send `extendedFields=false` to leave out the full text of web pages (`body`) on large exports, or `extendedFields=true` if the script needs `body`.
+- **Missing values:** a field with no value is left out of the response; treat a missing count as 0.
+
+## Paging
+
+| Endpoint | Style | Parameters |
+| :--- | :--- | :--- |
+| `/v2/mentions` | cursor | `per_page` 1–10000 (default 50), `results_after` |
+| `/v2/answers` | cursor | `per_page` 1–1000 (default 50), `results_after` |
+| `top/mentioners` | page | `page` 1–100 (default 1), `per_page` 1–100 (default 10) |
+| `top/keywords`, `top/countries`, `top/languages` | one list | `limit` 1–10000 (default 10) |
+| `top/summary/daily` | one list | `limit` 1–100 (default 2) |
+| `tracker-groups/list`, `trackers/list` | page | `page` ≥ 1 (default 1), `limit` 1–100 (default 10) |
+
+Cursor paging: send each response's `results_after` back as `results_after`, and stop when a page holds fewer items than `per_page`. The cursor follows publication time, so page through complete exports with the default `ordering=time`; use the other orderings for a single top-N page. `brand-overview`, `stats`, `audience-demographics`, `citation-analysis` and `account/usage` are not paged.
+
+## Writing (beta)
+
+- **Access:** write access is enabled per account on request, after review (`403 apiV2Write_not_available` otherwise), and the token's user must be an admin (`403 write_not_allowed`). A token limited to specific trackers cannot create trackers or create, change or delete tracker groups (`403 token_scope_restricted`).
+- **Scope:** only **Keyword** trackers can be created. Profile and Location trackers can be updated and deleted. AI Visibility Prompt trackers, and tracker groups that contain them, can be changed in the web app only.
+- **Partial updates:** only the fields sent change, and `null` clears a nullable field. Unknown or read-only keys answer `400`.
+- **Confirm with the user before** deleting a tracker or group, or sending `existing_mentions: "delete"`: none of these can be undone through the API.
+- **Plan allowance:** each tracker uses one keyword of the plan (`403 keyword_limit_reached`). Check `/v2/account/usage` before creating many.
+- **Do not repeat a create that may have succeeded.** List the trackers first. A `201` whose body holds only `{id}` means the tracker exists.
+- **Retries:** `409 location_changed`, `503` and the `520` codes of updates and deletes are safe to retry; a retry finishes an incomplete update or delete.
+
+Bodies, field rules, examples and every error code: `references/write-endpoints.md`.
 
 ## Rate Limits & Caching (must respect)
 
-Two independent throttle layers per API key. Monitor `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset` response headers:
+Limits are **per account**: every token of the account shares the same counters.
 
-| Layer | Window | Max | On 429 (`error` field) | Strategy |
-| :--- | :--- | :--- | :--- | :--- |
-| Burst | 1 second | 10 req (default) | `burst_limit_exceeded` | Short pause, retry |
-| Sustained | 60 seconds | per `RateLimit-Limit` | `rate_limit_exceeded` | Exponential backoff |
+| Requests | Burst | Sustained | Daily |
+| :--- | :--- | :--- | :--- |
+| Reads (`GET`) | 5 per second | 100 per 60 seconds | — |
+| Writes (`POST`, `PUT`, `DELETE`) | 2 per 5 seconds | 10 per 60 seconds | 100 per day |
 
-Limits are enforced **per bearer token (account)**. The exact sustained ceiling is plan/config-dependent — read it from the `RateLimit-Limit` header rather than hardcoding a number.
+The write limits above are those of a plan that allows up to 25 trackers; a larger plan gets proportionally higher write limits, up to 20 times. They follow the plan, not the trackers in use. Read the headers rather than hardcoding numbers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` (Unix seconds). They report the sustained limit, except on a burst `429`.
 
-Successful responses are cached for **15 seconds** (per account + method + URL + params + body). Inspect `X-Cache` (`HIT`/`MISS`/`COALESCED`) and `X-Cache-Age`. When firing parallel calls, group identical-parameter requests within ~100ms to benefit from request coalescing.
+| `429` `error` | Meaning | Strategy |
+| :--- | :--- | :--- |
+| `rate_limit_exceeded` | Burst ("Burst limit exceeded…") or sustained ("Rate limit exceeded…") limit | Wait `Retry-After` seconds or until `X-RateLimit-Reset`, then retry with backoff |
+| `daily_write_limit_exceeded` | The day's writes are used up | Stop writing; `Retry-After` gives the seconds until the reset |
+| `keyword_edit_limit_reached` | `existing_mentions: "delete"` used too often on this tracker today | Retry tomorrow, or keep the existing mentions |
 
-Full details, retry pseudocode, and error JSON structures: `references/auth-rate-limits.md`.
+Successful `GET` responses are cached for **30 seconds** per user and identical request (method, URL and query). `Cache-Control: max-age=N` marks a cached response, `no-cache` a fresh one, and `X-Cache: COALESCED` a response shared with an identical read that was already running. Cached responses still count toward the limits, so don't poll the same request more often than every 30 seconds. Writes are never cached.
+
+Full details, retry code and error shapes: `references/auth-rate-limits.md`.
+
+## Errors
+
+Errors are JSON `{"status": 403, "error": "<code>", "message": "..."}`, except validation errors: `400 {"errors": [{"field": "...", "message": "..."}]}`. Branch on `error`, not on `message`.
+
+| HTTP | Meaning | Action |
+| :--- | :--- | :--- |
+| `400` | Invalid parameter, value or body | Fix the request; don't retry it unchanged |
+| `401` | `unauthorized`, `invalid_token`, `token_expired`, `invalid_token_options` | Refresh once, then retry |
+| `403` | `access_denied`, `account_blocked`, `apiV2_not_available`, `account_inactive`; `ai_visibility_not_available` on answers; plan and permission codes on writes | Tell the user; don't retry |
+| `404` | Tracker, tracker group or answer not found | Check the ID |
+| `409` | A Location tracker was changed by another request at the same time | Retry |
+| `422` | The write can't apply to this tracker (code in `error`) | Fix the request |
+| `429` | Rate or daily limit | See above |
+| `503` | A boolean query couldn't be checked; nothing was saved | Retry |
+| `520` | `internal_error`, or an update or delete that didn't finish | Retry with backoff |
 
 ## Known Data Caveats
 
-Content from X (Twitter), LinkedIn, and Web News may be subject to strict research caps depending on the user's plan — API results might not exactly mirror the Mentionlytics web app for these sources. Mention this proactively if the user compares API output to the dashboard.
+- Content from X (Twitter), LinkedIn and Web News may be subject to strict research caps depending on the plan, so API results might not exactly match the Mentionlytics web app for these sources. Mention this proactively if the user compares API output with the dashboard.
+- The pages an answer cites are analyzed 10 minutes or more after the answer is collected, so a new answer's citations have no `analysis` yet.
+- Days are the account's time zone: `totals[].pub_date` is that day given as midnight UTC.
 
 ## Reference Files
 
-- `references/endpoints.md` — per-endpoint parameters, limits, example calls, and expected `200`/error response shapes. Read before building any request beyond the basics or validating a response.
-- `references/channels-categories.md` — channel ID enums and category filter tokens per platform. Read whenever filtering by source/platform.
-- `references/auth-rate-limits.md` — token rotation flow, 429 handling, caching and coalescing details. Read when writing retry logic or long-running scripts.
+- `references/endpoints.md`: mention and analytics endpoints, tracker and tracker group lists, account usage. Parameters, examples and response shapes.
+- `references/answers.md`: AI Visibility answers, brand overview and citation analysis.
+- `references/write-endpoints.md`: creating, updating, pausing, moving and deleting trackers and tracker groups. Bodies, field rules and error codes.
+- `references/channels-categories.md`: channel IDs and category tokens per platform. Read whenever filtering by source.
+- `references/auth-rate-limits.md`: token rotation, rate limits, retry code, caching and coalescing. Read when writing retry logic or long-running scripts.

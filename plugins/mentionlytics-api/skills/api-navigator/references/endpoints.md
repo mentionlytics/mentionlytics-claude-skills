@@ -1,12 +1,14 @@
-# Endpoint Reference
+# Endpoint Reference: Mentions, Trackers and Account
 
 Base URL: `https://api.mentionlytics.com`
-All endpoints require the `Authorization: Bearer <token>` header.
+Every endpoint here is a `GET` and requires the `Authorization: Bearer <token>` header.
 
-> **Parameters are NOT uniform across endpoints.** The `ordering` values, pagination style, defaults, and available filters differ per endpoint. Always check the specific endpoint section below — do not assume a parameter behaves the same everywhere. The `ordering` parameter in particular uses **two different value sets** (see below).
+> **Parameters are NOT uniform across endpoints.** The `ordering` values, pagination style, defaults, and available filters differ per endpoint. Always check the specific endpoint section below; an unknown parameter or value answers `400`. The `ordering` parameter in particular uses **two different value sets**.
+
+Other references: AI Visibility answers in `answers.md`, writes in `write-endpoints.md`, token refresh and limits in `auth-rate-limits.md`.
 
 ## Contents
-1. [POST /v2/auth/refresh](#auth-refresh)
+1. [Shared filter parameters](#shared-filters)
 2. [GET /v2/mentions](#mentions)
 3. [GET /v2/mentions/top/mentioners](#top-mentioners)
 4. [GET /v2/mentions/top/keywords](#top-keywords)
@@ -17,82 +19,65 @@ All endpoints require the `Authorization: Bearer <token>` header.
 9. [GET /v2/mentions/audience-demographics](#audience-demographics)
 10. [GET /v2/tracker-groups/list](#tracker-groups)
 11. [GET /v2/trackers/list](#trackers)
+12. [GET /v2/account/usage](#account-usage)
+13. [Error responses](#errors)
 
 ---
 
+<a name="shared-filters"></a>
 ## Shared filter parameters
 
-These filters are accepted by the mention analytics endpoints — `/v2/mentions`, `/v2/mentions/top/mentioners`, `/v2/mentions/top/keywords`, `/v2/mentions/top/countries`, `/v2/mentions/top/languages`, and `/v2/mentions/stats`. (`/v2/mentions/top/summary/daily` and `/v2/mentions/audience-demographics` accept only a subset — see their sections.)
+These filters are accepted by the mention analytics endpoints: `/v2/mentions`, `/v2/mentions/top/mentioners`, `/v2/mentions/top/keywords`, `/v2/mentions/top/countries`, `/v2/mentions/top/languages`, and `/v2/mentions/stats`. (`/v2/mentions/top/summary/daily` and `/v2/mentions/audience-demographics` accept only a subset; see their sections.)
 
 | Parameter | Type | Values / Format | Default |
 | :--- | :--- | :--- | :--- |
-| `fields` | string | Comma-separated list of fields to include in the response | all |
-| `startDate` | string | `YYYYMMDD` | 7 days ago |
-| `endDate` | string | `YYYYMMDD` | today |
-| `relevance` | string | `all`, `low` (≥0.25), `normal` (≥0.5), `strict` (≥0.75) | `normal` |
-| `trackers` | string | `brandmonitoring`, `competitors`, `leads`, `all`, or comma-separated tracker IDs | `brandmonitoring` |
+| `fields` | string | Comma-separated fields to include. Dotted names select nested fields (`profile.name`, `metrics.engagement`) | all |
+| `startDate` | string | `YYYYMMDD`, from `20200101`, at most tomorrow | 7 days ago |
+| `endDate` | string | `YYYYMMDD`, at most today | today (UTC), or `startDate` when that is tomorrow |
+| `relevance` | string | `all`; `low` = only scores below 0.5 (the mentions `normal` leaves out); `normal` ≥ 0.5; `strict` ≥ 0.75 | `normal` |
+| `trackers` | string | `brandmonitoring`, `competitors`, `leads` (Industry & Topics groups), `all`, or comma-separated tracker IDs | `brandmonitoring` |
 | `trackerGroups` | string | Comma-separated tracker group IDs | — |
-| `preset` | integer | ID of a saved filter preset (≥1) | — |
-| `channels` | string | Comma-separated channel IDs (see channels-categories.md) | all |
-| `categories` | string | Comma-separated category tokens (see channels-categories.md) | all |
+| `preset` | integer | ID of a filter preset saved in the web app (≥ 1) | — |
+| `channels` | string | Comma-separated channel IDs (see `channels-categories.md`) | all |
+| `categories` | string | Comma-separated category tokens (see `channels-categories.md`) | all |
 | `contentType` | string | `image`, `album`, `video`, `audio`, `link`, `webpage`, `text`, `other` | — |
-| `sentiment` | string | `positive`, `neutral`, `negative` | — |
-| `emotion` | string | `joy`, `anger`, `sadness`, `fear`, `sarcasm`, `neutral` | — |
-| `country` | string | Comma-separated ISO country codes | — |
-| `language` | string | Comma-separated ISO language codes | — |
+| `sentiment` | string | One of `positive`, `neutral`, `negative` | — |
+| `emotion` | string | One of `joy`, `anger`, `sadness`, `fear`, `sarcasm`, `neutral` | — |
+| `country` | string | Comma-separated ISO country codes (`US,GB`) | — |
+| `language` | string | Comma-separated ISO language codes (`en,fr`) | — |
 
-> **`ordering` is NOT shared** — its allowed values and default depend on the endpoint. See each section.
+> **`ordering` is NOT shared**: its allowed values and default depend on the endpoint. See each section.
+
+A field with no value is left out of a response; treat a missing count as 0.
 
 ---
-
-<a name="auth-refresh"></a>
-## POST /v2/auth/refresh
-
-Exchange a long-lived refresh token for a fresh bearer token. Call automatically on any 401.
-
-**Payload (application/json):**
-- `refresh_token` *(string, required)* — the refresh token issued during initial authentication.
-
-```bash
-curl -X POST "https://api.mentionlytics.com/v2/auth/refresh" \
-  -H "Content-Type: application/json" \
-  -d '{"refresh_token": "'"$MENTIONLYTICS_REFRESH_TOKEN"'"}'
-```
-
-**Response (200):**
-```json
-{
-  "bearer": "<new bearer token, valid 1 hour>",
-  "refresh_token": "<new refresh token, replaces the old one>"
-}
-```
-
-The old refresh token is invalidated immediately — persist BOTH new values. On a failed refresh the `error` field is one of `invalid_refresh_token`, `token_expired`, or `token_revoked`; in that case the user must re-authenticate (do not loop).
 
 <a name="mentions"></a>
 ## GET /v2/mentions
 
-Fetch individual social/web mentions, one object per mention.
+Fetch individual mentions, one object per mention, with their analysis: sentiment, emotion, entities, video analysis and translations.
 
-**Pagination — cursor-based:**
-- `per_page` *(integer, 1–10000, default 50)* — results per page.
-- `results_after` *(integer)* — timestamp cursor. Pass the `results_after` value returned by the previous response to fetch the next page. There is **no `page` parameter** on this endpoint.
+**Pagination (cursor-based):**
+- `per_page` *(integer, 1–10000, default 50)*: results per page.
+- `results_after` *(integer)*: cursor. Pass the `results_after` value of the previous response to get the next page, and stop when a page holds fewer than `per_page` mentions. There is **no `page` parameter** on this endpoint.
+- The cursor follows publication time: page through complete exports with the default `ordering=time`, and use the other orderings for a single top-N page.
 
-**Ordering** — `ordering` *(default `time`)*:
+**Ordering** (`ordering`, default `time`):
 
 | Value | Meaning |
 | :--- | :--- |
 | `time` | Publication date, newest first |
 | `rank` | Reach and rank, most influential first |
-| `engagement` | Total engagement (likes, shares, comments, views — excludes X/Twitter views) |
+| `engagement` | Total engagement (likes, shares, comments, views; excludes X/Twitter views) |
 | `engagement_nv` | Engagement without views |
 
-**Additional filters (beyond the shared set):**
-- `mention_ids` *(string)* — comma-separated mention IDs to fetch specific mentions.
-- `tracker_totals` *(boolean, default false)* — when `true`, response includes a `tracker_totals` array with counts grouped by tracker group and tracker.
+**Additional parameters (beyond the shared set):**
+- `mention_ids` *(string)*: comma-separated mention IDs. `startDate` and `endDate` are ignored; the other filters still apply.
+- `tracker_totals` *(boolean, default false)*: when `true`, the response adds a `tracker_totals` array with counts per tracker group and tracker. It lists the trackers of the groups the user can see, except Prompt trackers (their answers are counted by `/v2/answers`), with 0 for trackers with no matching mentions.
+- `extendedFields` *(boolean, default true; false for Power BI and Excel)*: without `fields`, each mention includes `body`, the full text of a web page. Send `extendedFields=false` to leave it out and make large exports smaller. A later version will default to `false` for every client, so a script that reads `body` should send `extendedFields=true` or list `body` in `fields`.
 
 ```bash
-curl "https://api.mentionlytics.com/v2/mentions?startDate=20260701&endDate=20260722&trackers=brandmonitoring&relevance=normal&ordering=time&per_page=50" \
+curl "https://api.mentionlytics.com/v2/mentions?startDate=20261001&endDate=20261031&trackers=brandmonitoring&relevance=normal&per_page=100&extendedFields=false" \
   -H "Authorization: Bearer $MENTIONLYTICS_API_TOKEN"
 ```
 
@@ -105,51 +90,77 @@ curl "https://api.mentionlytics.com/v2/mentions?startDate=20260701&endDate=20260
       "id": 123456789,
       "uu_id": "abc123def456",
       "tracker": { "id": 456, "name": "Brand Keywords" },
-      "trackerGroup": { "id": 123, "name": "Brand Monitoring" },
-      "pub_date": "2024-05-20",
-      "pub_datetime": "2024-05-20T14:30:00Z",
+      "trackerGroup": { "id": 123, "name": "My Brand" },
+      "pub_date": "2026-10-20",
+      "pub_datetime": "2026-10-20T14:30:00Z",
       "title": "Great product review",
-      "description": "This is the full text of the mention...",
-      "link": "https://example.com/post/123",
+      "description": "This is the text of the mention...",
+      "link": "https://x.com/johndoe/status/123",
       "relevance": 0.85,
       "sentiment_text": "positive",
       "emotion_text": "joy",
+      "entities": [ { "type": "PERSON", "value": "John Doe" } ],
       "country_code": "US", "country_name": "United States",
       "language_code": "en", "language_name": "English",
       "channel_name": "twitter", "channel_id": 2,
       "contentType": "text", "category_id": "tweets", "category_name": "Tweets",
-      "type_name": "news",
-      "entities": [ { "type": "PERSON", "value": "John Doe" } ],
       "profile": {
         "id": 789, "name": "John Doe", "username": "johndoe",
-        "link": "https://twitter.com/johndoe",
+        "link": "https://x.com/johndoe",
         "followers_count": 5000, "verified": false, "type_name": "user"
       },
       "metrics": {
         "engagement": 1500, "engagement_no_views": 150,
         "likes": 100, "shares": 25, "comments": 25, "quotes": 10,
         "views": 1350, "impressions": 2000, "reach": 5000
-      }
+      },
+      "workflow": { "labels": ["Important"], "tags": [ { "name": "launch", "aiTag": true } ] }
     }
   ],
-  "totals": [ { "pub_date": "2024-05-20", "total_count": 42 } ],
-  "results_after": 1716240000000
+  "totals": [ { "pub_date": "2026-10-20T00:00:00.000Z", "total_count": 42 } ],
+  "results_after": 1792506600000
 }
 ```
 
-The full `Mention` object also carries (when applicable): `body`, `subreddit`, `subChannel`, `discover_at`, `updated_at`, `image`, `thumb_url`, `metrics.reactions` (Facebook/Telegram: `love`, `wow`, `haha`, `sad`, `angry`, `thankful`, `fire`, `clap`, `dislike`), `metrics.review`, `metrics.global_rank`, `metrics.country_rank`, `parent` (for comments/replies, up to 2 levels), and `workflow` (`assigned_to`, `labels`, `notes`, `tags`). When `tracker_totals=true`, a top-level `tracker_totals` array is added: `[{ id, name, type: "trackerGroup", total, trackers: [{ id, name, type: "tracker", total }] }]`.
+**Mention fields** (each present when it has a value):
+
+| Field | Notes |
+| :--- | :--- |
+| `id`, `uu_id` | Mention ID (as accepted by `mention_ids`) and external ID |
+| `tracker`, `trackerGroup` | `{id, name}` of the tracker and group that collected it |
+| `pub_date`, `pub_datetime`, `discover_at`, `updated_at` | Publication date and time, when it was found, when it was last updated |
+| `title`, `description`, `link` | Text and URL. `description` is the mention text |
+| `body` | Full text of a web page (see `extendedFields`) |
+| `relevance` | 0.25–1.0 |
+| `sentiment_text`, `emotion_text` | `positive`/`neutral`/`negative`; `joy`/`anger`/`sadness`/`fear`/`sarcasm`/`neutral` |
+| `entities` | `[{type, value}]` named entities found in the text |
+| `video_analysis` | `{summary, instances: [{time_seconds, label}]}` for analyzed video and audio mentions (YouTube, TikTok, Instagram, podcasts). Select whole, or `video_analysis.summary` / `video_analysis.instances` |
+| `translations` | `[{language_code, language_name, text}]`: translations already made in the web app. Reading them uses no translation quota. Selected whole |
+| `country_code`, `country_name`, `language_code`, `language_name` | Detected country and language |
+| `channel_id`, `channel_name` | `channel_name` is one of `web`, `twitter`, `facebook`, `youtube`, `instagram`, `reddit`, `reviews`, `other` |
+| `category_id`, `category_name`, `contentType`, `subChannel`, `subreddit`, `type_name` | Category token (as in `categories`), content type, sub-channel, subreddit, source type |
+| `thumb_url` | Thumbnail. (`image` is deprecated; use `thumb_url`) |
+| `profile` | Author: `id`, `uu_id`, `name`, `username`, `description`, `image`, `link`, `country_code`, `country_name`, `followers_count`, `post_count`, `type_name`, `verified`, `geolocation{latitude, longitude, locality, country_name, city_name, region_name}` |
+| `metrics` | `engagement`, `engagement_no_views`, `likes`, `shares`, `comments`, `quotes`, `views`, `impressions`, `reach`, `visits`, `users`, `review` (rating), `global_rank`, `country_rank`, `reactions{love, wow, haha, sad, angry, thankful, fire, clap, dislike}` (Facebook, Telegram) |
+| `total` | `{pub_date_mentions}`: the total mention count for the mention's publication date |
+| `parent` | For comments and replies: `{id, uu_id, description, parent{id, uu_id, description, profile{id, name, image}}}` (up to 2 levels) |
+| `workflow` | `assigned_to` (emails), `labels`, `notes`, `tags[{name, aiTag}]` |
+
+When `tracker_totals=true`, a top-level `tracker_totals` array is added: `[{ id, name, type: "trackerGroup", total, trackers: [{ id, name, type: "tracker", total }] }]`.
+
+`totals` has one entry per day of the range (with `mention_ids`, one per day that has one of them); `pub_date` is the day in the account's time zone, given as midnight UTC.
 
 <a name="top-mentioners"></a>
 ## GET /v2/mentions/top/mentioners
 
 Top profiles/influencers mentioning the tracked terms.
 
-**Pagination — page-based:**
+**Pagination (page-based):**
 - `per_page` *(integer, 1–100, default 10)*
 - `page` *(integer, 1–100, default 1)*
 
-**Ordering** — `ordering` *(default `reach`)*: one of `mentions`, `reach`, `engagement`, `engagement_nv`. (`reach` = most influential, `mentions` = most active.)
-- `sortDesc` *(boolean, default true)* — descending order.
+**Ordering** (`ordering`, default `reach`): one of `mentions`, `reach`, `engagement`, `engagement_nv`. (`reach` = most influential, `mentions` = most active.)
+- `sortDesc` *(boolean, default true)*: descending order.
 
 Supports the shared filter parameters.
 
@@ -168,7 +179,8 @@ curl "https://api.mentionlytics.com/v2/mentions/top/mentioners?ordering=reach&pe
       "channel_id": 2, "channel_name": "twitter",
       "name": "John Doe", "username": "johndoe",
       "description": "Tech enthusiast and blogger",
-      "link": "https://twitter.com/johndoe",
+      "image": "https://example.com/avatar.jpg",
+      "link": "https://x.com/johndoe",
       "country": "US", "language": "en",
       "type_name": "user", "verified": true, "verified_badge": "blue",
       "geolocation": { "latitude": 40.7128, "longitude": -74.0060, "city_name": "New York", "country_name": "United States" },
@@ -185,19 +197,19 @@ curl "https://api.mentionlytics.com/v2/mentions/top/mentioners?ordering=reach&pe
 }
 ```
 
-For web sources, `metrics` also carries `users` and `visits` instead of social follower counts.
+For web sources, `metrics` carries `users` and `visits` instead of social follower counts.
 
 <a name="top-keywords"></a>
 ## GET /v2/mentions/top/keywords
 
 Trending keywords and hashtags.
 
-- **Ordering** — `ordering`: one of `mentions`, `reach`, `engagement`, `engagement_nv` (no fixed default — server default applies).
+- **Ordering** (`ordering`, default `mentions`): one of `mentions`, `reach`, `engagement`, `engagement_nv`.
 - `sortDesc` *(boolean, default true)*
-- `limit` *(integer, 1–10000, default 10)* — number of keywords to return.
-- `onlyHashtags` *(boolean, default false)* — restrict results to hashtags (keywords starting with `#`).
-- `adjacentWords` *(integer, one of 0,1,2,3, default 1)* — phrase length: `0` = single words, `1` = 2-word phrases, etc.
-- `ignoreMainKeywords` *(boolean, default true)* — exclude your main tracked keywords from results.
+- `limit` *(integer, 1–10000, default 10)*: number of keywords to return.
+- `onlyHashtags` *(boolean, default false)*: only hashtags (keywords starting with `#`).
+- `adjacentWords` *(integer, one of 0, 1, 2, 3, default 1)*: phrase length; `0` = single words, `1` = 2-word phrases, and so on.
+- `ignoreMainKeywords` *(boolean, default true)*: leave out the tracked main keywords.
 
 Supports the shared filter parameters.
 
@@ -219,14 +231,14 @@ Supports the shared filter parameters.
 }
 ```
 
-`weight` is the count for the selected `ordering` metric (mentions / engagement / engagement_nv / reach).
+`weight` is the value of the selected `ordering` metric (mentions / engagement / engagement_nv / reach).
 
 <a name="top-countries"></a>
 ## GET /v2/mentions/top/countries
 
 Geographic mention breakdown by country.
 
-- **Ordering** — `ordering` *(default `mentions`)*: one of `mentions`, `reach`, `engagement`, `engagement_nv`.
+- **Ordering** (`ordering`, default `mentions`): one of `mentions`, `reach`, `engagement`, `engagement_nv`.
 - `sortDesc` *(boolean, default true)*
 - `limit` *(integer, 1–10000, default 10)*
 
@@ -250,7 +262,7 @@ Supports the shared filter parameters.
 
 Language distribution of mentions.
 
-- **Ordering** — `ordering` *(default `mentions`)*: one of `mentions`, `reach`, `engagement`, `engagement_nv`.
+- **Ordering** (`ordering`, default `mentions`): one of `mentions`, `reach`, `engagement`, `engagement_nv`.
 - `sortDesc` *(boolean, default true)*
 - `limit` *(integer, 1–10000, default 10)*
 
@@ -272,13 +284,13 @@ Supports the shared filter parameters.
 <a name="daily-summary"></a>
 ## GET /v2/mentions/top/summary/daily
 
-AI-generated daily summaries of mention clusters. Auto-calculated every morning covering the past **24 hours**.
+AI-generated daily summaries of mention clusters, grouped by theme. They are calculated every morning and cover the past **24 hours**.
 
 **Accepts only this parameter subset** (not the full shared set):
 - `fields` *(string)*
 - `startDate` / `endDate` *(YYYYMMDD)*
-- `trackers` *(default `brandmonitoring`)* — one of `brandmonitoring`, `competitors`, `all`. **Note: `leads` is NOT valid here.**
-- `limit` *(integer, 1–100, default 2)* — number of daily summaries to return.
+- `trackers` *(default `brandmonitoring`)*: one of `brandmonitoring`, `competitors`, `all`. **`leads` and tracker IDs are NOT valid here.**
+- `limit` *(integer, 1–100, default 2)*: number of daily summaries to return.
 
 **Expected response (200):** `{ summary: [DailySummary] }`
 
@@ -287,7 +299,7 @@ AI-generated daily summaries of mention clusters. Auto-calculated every morning 
   "summary": [
     {
       "type": "brandmonitoring",
-      "created_at": "2026-02-11 14:00",
+      "created_at": "2026-10-20 06:00",
       "description": "Daily brand monitoring summary",
       "clusters": [
         {
@@ -300,7 +312,7 @@ AI-generated daily summaries of mention clusters. Auto-calculated every morning 
             "facebook_mentions": 5, "youtube_mentions": 2, "instagram_mentions": 3, "others_mentions": 0
           },
           "tracker_totals": [
-            { "id": 101, "name": "Brand Monitoring", "type": "trackerGroup", "total": 45,
+            { "id": 101, "name": "My Brand", "type": "trackerGroup", "total": 45,
               "trackers": [ { "id": 201, "name": "Brand Name Mentions", "type": "tracker", "total": 25 } ] }
           ]
         }
@@ -310,12 +322,12 @@ AI-generated daily summaries of mention clusters. Auto-calculated every morning 
 }
 ```
 
-`type` is `brandmonitoring` or `competitors`; `created_at` is UTC.
+`type` is `brandmonitoring` or `competitors`; `created_at` is UTC. A cluster's `mention_ids` can be fetched with `/v2/mentions?mention_ids=…`. `tracker_totals` leaves out hidden and deleted tracker groups.
 
 <a name="stats"></a>
 ## GET /v2/mentions/stats
 
-High-level analytics overview: mention counts (web/social/all), reach, `unique_reach` per channel, engagement / `unique_engagement` / `impression_engagement`, sentiment breakdown by channel, EMV (Earned Media Value) and MQI (Mention Quality Index).
+High-level analytics overview: mention counts (web/social/all), reach, `unique_reach` per channel, engagement / `unique_engagement` / `impression_engagement`, sentiment by channel, EMV (Earned Media Value) and MQI (Mention Quality Index).
 
 Accepts the shared filter parameters. **No pagination, ordering, or limit.**
 
@@ -355,6 +367,7 @@ Accepts the shared filter parameters. **No pagination, ordering, or limit.**
 }
 ```
 
+- `unique_reach` keys: `gg` web, `tw` X/Twitter, `fb` Facebook, `yt` YouTube, `ig` Instagram, `rv` reviews, `rd` Reddit, `tk` TikTok, `ln` LinkedIn, `pn` Pinterest, `tl` Telegram, `th` Threads, `bs` Bluesky, `mn` manual, `ot` other.
 - `emv` carries a `currency` code plus per-channel values (`web`, `twitter`, `facebook`, `youtube`, `instagram`, `reviews`, `others`, `total`).
 - `mqi.type` is `avg` or `sum`; the per-channel breakdown mirrors `emv`.
 - `unique_engagement` and `impression_engagement` share the exact field set of `engagement`.
@@ -362,14 +375,14 @@ Accepts the shared filter parameters. **No pagination, ordering, or limit.**
 <a name="audience-demographics"></a>
 ## GET /v2/mentions/audience-demographics
 
-Age/gender demographics for **owned** Facebook and Instagram media channels.
+Age/gender demographics of the audiences of **owned** Facebook and Instagram profiles.
 
 **Accepts only this parameter subset:**
 - `fields` *(string)*
-- `endDate` *(YYYYMMDD, default today)* — **there is no `startDate` on this endpoint.**
+- `endDate` *(YYYYMMDD, default today)*: **there is no `startDate` on this endpoint.**
 - `trackers`, `trackerGroups`
-- `filterGenderByAge` *(string)* — one of `13-17`, `18-24`, `25-34`, `35-44`, `45-54`, `55-64`, `65+`.
-- `filterAgeByGender` *(string)* — one of `male`, `female`, `unspecified`.
+- `filterGenderByAge` *(string)*: one of `13-17`, `18-24`, `25-34`, `35-44`, `45-54`, `55-64`, `65+`.
+- `filterAgeByGender` *(string)*: one of `male`, `female`, `unspecified`.
 
 **Expected response (200):** `{ demographics: Demographics }`
 
@@ -385,12 +398,19 @@ Age/gender demographics for **owned** Facebook and Instagram media channels.
 <a name="tracker-groups"></a>
 ## GET /v2/tracker-groups/list
 
-List tracker groups.
+List tracker groups (collections of trackers, by category).
 
 - `fields` *(string)*
-- `trackerGroupsCategory` *(default `all`)* — one of `all`, `brandmonitoring`, `competitors`, `leads`.
-- `page` *(integer, default 1)*
-- `limit` *(integer, default 10)*
+- `trackerGroupsCategory` *(string, default `all`)*: comma-separated `all`, `brandmonitoring`, `competitors`, `leads` (Industry & Topics).
+- `search` *(string, max 255)*: case-insensitive search in the group name.
+- `requireTrackers` *(boolean, default true)*: groups without trackers are left out unless this is `false` (for example a group just created through the API).
+- `page` *(integer, ≥ 1, default 1)*
+- `limit` *(integer, 1–100, default 10)*
+
+```bash
+curl "https://api.mentionlytics.com/v2/tracker-groups/list?trackerGroupsCategory=brandmonitoring,competitors&limit=100" \
+  -H "Authorization: Bearer $MENTIONLYTICS_API_TOKEN"
+```
 
 **Expected response (200):** `{ trackerGroups: [TrackerGroup] }`
 
@@ -399,30 +419,32 @@ List tracker groups.
   "trackerGroups": [
     {
       "id": 42, "name": "My Brand",
-      "excluded_keywords": "spam irrelevant",
+      "excluded_keywords": "spam, irrelevant",
       "created_at": "2023-06-15",
       "type": "trackerGroup",
       "category_id": 0, "category_name": "Brand Monitoring",
-      "options": { "ignore_duplicates": 0, "color": "#3b82f6" },
-      "total": { "keywords": 5, "profiles": 2 }
+      "options": { "ignore_duplicates": true, "color": "#3b82f6" },
+      "total": { "keywords": 5, "profiles": 2, "prompts": 0 }
     }
   ]
 }
 ```
 
-`category_id`/`category_name`: `0`=Brand Monitoring, `1`=Competitors, `2`=Marketing Leads.
+- `category_id`/`category_name`: `0` = Brand Monitoring, `1` = Competitors, `2` = Industry & Topics.
+- `options.color` is left out when the group has none. `total.prompts` counts AI Visibility prompts.
 
 <a name="trackers"></a>
 ## GET /v2/trackers/list
 
-List individual trackers (keyword / profile / location queries).
+List individual trackers. Trackers in groups hidden from the token's user in the web app are not listed.
 
 - `fields` *(string)*
-- `category` *(default `all`)* — one of `all`, `keyword`, `profile`, `location`. (This is the tracker-type filter.)
-- `trackerGroups` *(string)* — comma-separated tracker group IDs.
-- `trackerGroupsCategory` *(default `all`)* — filter by parent group category: `all`, `brandmonitoring`, `competitors`, `leads`.
-- `page` *(integer, default 1)*
-- `limit` *(integer, default 10)*
+- `category` *(string, default `all`)*: tracker type, comma-separated: `all`, `keyword`, `profile`, `location`, `prompt`.
+- `trackerGroups` *(string)*: comma-separated tracker group IDs.
+- `trackerGroupsCategory` *(string, default `all`)*: parent group category, comma-separated: `all`, `brandmonitoring`, `competitors`, `leads`.
+- `search` *(string, max 255)*: case-insensitive search in the tracker name, its main keyword and its profile name.
+- `page` *(integer, ≥ 1, default 1)*
+- `limit` *(integer, 1–100, default 10)*
 
 **Expected response (200):** `{ trackers: [Tracker] }`
 
@@ -433,50 +455,102 @@ List individual trackers (keyword / profile / location queries).
       "id": 101, "name": "Brand Keywords",
       "type": "tracker",
       "category_id": 0, "category_name": "Keyword",
-      "is_active": true,
-      "created_at": "2023-06-15T10:00:00Z", "updated_at": "2024-01-20T08:30:00Z",
+      "is_active": 1,
+      "created_at": "2023-06-15T10:00:00Z", "updated_at": "2026-01-20T08:30:00Z",
       "tracker_group": { "id": 42, "name": "My Brand", "type": "trackerGroup", "category_id": 0, "category_name": "Brand Monitoring" },
       "keyword": {
         "main_keyword": "mentionlytics",
         "included_keywords": "social media, monitoring",
-        "excluded_keywords": "spam, irrelevant",
-        "sources": { "web": true, "twitter": true, "facebook": false, "instagram": false }
+        "excluded_keywords": "jobs, careers",
+        "options": { "include_unknown_countries": true, "sentiment_check": true, "ignore_retweets": true },
+        "sources": { "web": true, "twitter": true, "facebook": false, "instagram": false },
+        "restrictions": { "language_code": "en" }
       }
     },
     {
       "id": 102, "name": "Brand Instagram",
       "type": "tracker",
       "category_id": 1, "category_name": "Profile",
-      "is_active": true,
+      "is_active": 1,
       "tracker_group": { "id": 42, "name": "My Brand", "type": "trackerGroup", "category_id": 0, "category_name": "Brand Monitoring" },
       "profile": {
         "id": "1234567890", "type": "instagram", "name": "mybrand",
         "url": "https://www.instagram.com/mybrand",
-        "trackposts": true, "is_authorized": true, "allow_publishing": true
+        "is_authorized": 1, "allow_publishing": true,
+        "options": { "sentiment_emotion_analysis": true, "ignore_comments": false }
+      }
+    },
+    {
+      "id": 103, "name": "Best CRM tools",
+      "type": "tracker",
+      "category_id": 3, "category_name": "AI Visibility Prompt",
+      "is_active": 1,
+      "tracker_group": { "id": 42, "name": "My Brand", "type": "trackerGroup", "category_id": 0, "category_name": "Brand Monitoring" },
+      "prompt": {
+        "text": "What are the best CRM tools for small businesses?",
+        "type": "comparative", "country_code": "US", "runs_per_day": 1,
+        "sources": { "chatgpt": true, "gemini": true, "perplexity": true }
       }
     }
   ]
 }
 ```
 
-- `category_id`/`category_name`: `0`=Keyword, `1`=Profile, `2`=Location.
-- The `keyword` object is present **only on Keyword trackers**; the `profile` object is present **only on Profile and Location trackers**. Inspect `category_name` before parsing. Keyword trackers additionally expose `keyword.options`, `keyword.sources` (per-channel booleans), and `keyword.restrictions` (`site_search`, `language_code`, `country_code`, `subreddit`).
+- `category_id`/`category_name`: `0` = Keyword, `1` = Profile, `2` = Location, `3` = AI Visibility Prompt. Inspect it before parsing.
+- `is_active` and `profile.is_authorized` are `1`/`0`.
+- `keyword` is present on **Keyword and Location** trackers, `profile` on **Profile and Location** trackers, `prompt` on **AI Visibility Prompt** trackers.
+- `keyword` holds `main_keyword` (alternatives separated by `|`; with a `boolean_query`, up to 5 of its terms, used on the channels that don't support boolean queries), `custom_hashtag_search`, `boolean_query`, `included_keywords`, `excluded_keywords`, and:
+  - `options`: `included_keywords_or`, `include_unknown_countries`, `sentiment_check`, `video_analysis_check`, `relevance_check_based_on_video_analysis` (while YouTube or TikTok is on), `ignore_comments` (while a source with comments is on), `ignore_retweets`, `exact_match`, `ignore_included_tweets` (X/Twitter only), `targeted_sentiment_emotion` (`Main Keyword`, `Tracker Group`, `Not Targeted`; while `sentiment_check` is on), `daily_mention_limit` and `daily_mention_limit_left` (0 or below: the keyword stops collecting until the next day);
+  - `sources`: `web`, `twitter`, `facebook`, `meta_ads`, `youtube`, `instagram`, `reddit`, `tiktok`, `bluesky`, `linkedin`, `pinterest`, `telegram`, `threads`, `podcasts` (booleans);
+  - `restrictions`: `site_search` (up to 10 sites), `language_code`, `country_code`, `subreddit` (`r/name`, comma-separated).
+- `profile` holds `id` (the platform's ID), `type` (`twitter`, `facebook`, `instagram`, `youtube`, `linkedin`, `tiktok`, `pinterest`, `telegram`, `threads`, `bluesky`, `reddit`, `googleMyBusiness`, `reviewTrackers`, `rss`, `appstore`, `googleplay`), `name`, `url`, `is_authorized`, `allow_publishing`, and `options`: `sentiment_emotion_analysis`, `ignore_comments` (Facebook, Instagram, YouTube, LinkedIn, TikTok, Reddit), `ignore_replies` (X/Twitter, Bluesky), `ignore_tagged_posts_comments` and `track_meta_ads` (Facebook).
+- `prompt` holds `text`, `type` (`informational`, `instructional`, `comparative`, `transactional`, `other`), `country_code`, `runs_per_day` (1, 2 or 4) and `sources` (`chatgpt`, `gemini`, `google_ai_overview`, `google_ai_mode`, `copilot`, `perplexity`, `claude`).
+- A missing field and an empty string both mean no value.
+
+<a name="account-usage"></a>
+## GET /v2/account/usage
+
+The account's plan limits and current usage. No parameters.
+
+```bash
+curl "https://api.mentionlytics.com/v2/account/usage" \
+  -H "Authorization: Bearer $MENTIONLYTICS_API_TOKEN"
+```
+
+**Expected response (200):** `{ usage: AccountUsage }`
+
+```json
+{
+  "usage": {
+    "account": { "id": 12345, "name": "Acme Inc", "subscription_plan": "pro", "state": "active" },
+    "mentions": { "total": 50000, "used": 12345, "remaining": 37655, "reset_at": "2026-11-15T00:00:00Z" },
+    "translations": { "total": 1000, "used": 120, "remaining": 880, "reset_at": "2026-11-15T00:00:00Z" },
+    "keywords": { "total": 20, "used": 12, "remaining": 8 },
+    "socialProfiles": { "total": 10, "used": 4, "remaining": 6 },
+    "locations": { "total": 5, "used": 1, "remaining": 4 },
+    "users": { "total": 5, "used": 3, "remaining": 2 }
+  }
+}
+```
+
+- `mentions` and `translations` reset monthly, at `reset_at` (UTC). The other allowances reflect what is configured on the account now.
+- `keywords.remaining` is how many more keyword trackers can be created.
+- `brandAccounts` (`total`, `used`, `thisMonthAdded`) and `trialAccounts` (`total`, `used`) are returned only for accounts with Brand Hub.
 
 ---
 
+<a name="errors"></a>
 ## Error responses (all endpoints)
 
-Every endpoint returns these error shapes. Validate on the `status` + `error` fields.
+Validate on the `status` + `error` fields.
 
 | HTTP | `error` values | Shape |
 | :--- | :--- | :--- |
 | `400` | (validation) | `{ "errors": [{ "field": "...", "message": "..." }] }` |
 | `401` | `unauthorized`, `invalid_token`, `token_expired`, `invalid_token_options` | `{ "status": 401, "error": "...", "message": "..." }` |
 | `403` | `access_denied`, `account_blocked`, `apiV2_not_available`, `account_inactive` | `{ "status": 403, "error": "...", "message": "..." }` |
-| `429` | `rate_limit_exceeded` (sustained) **or** `burst_limit_exceeded` (burst) | `{ "status": 429, "error": "...", "message": "..." }` |
+| `429` | `rate_limit_exceeded` (burst or sustained; the `message` says which) | `{ "status": 429, "error": "...", "message": "..." }` |
 | `520` | `internal_error` | `{ "status": 520, "error": "internal_error", "message": "..." }` |
-
-`POST /v2/auth/refresh` additionally returns `400` with `error: "bad_request"` (e.g. `message: "missing_refresh_token"`) and `401` with `error` one of `invalid_refresh_token`, `token_expired`, `token_revoked`.
 
 ```json
 { "status": 401, "error": "token_expired", "message": "Authentication required" }

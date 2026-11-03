@@ -1,8 +1,8 @@
 {
   "name": "mentionlytics-api",
   "displayName": "Mentionlytics API",
-  "version": "1.0.0",
-  "description": "Query the Mentionlytics API (v2): mentions, sentiment, top influencers, trending keywords, geo/language breakdowns, AI daily summaries, analytics (EMV, MQI), trackers, and tracker groups — with built-in auth rotation and rate-limit handling.",
+  "version": "2.0.0",
+  "description": "Query and manage a Mentionlytics account through the Mentionlytics API (v2): mentions, sentiment, top mentioners and keywords, geo/language breakdowns, AI daily summaries, analytics (EMV, MQI), audience demographics, AI Visibility answers and citations, account usage, and creating, updating, pausing and deleting trackers and tracker groups — with token refresh and rate-limit handling built in.",
   "author": {
     "name": "Mentionlytics",
     "url": "https://www.mentionlytics.com"
@@ -17,6 +17,8 @@
     "api",
     "mentions",
     "sentiment-analysis",
-    "share-of-voice"
+    "share-of-voice",
+    "ai-visibility",
+    "trackers"
   ]
 }

@@ -22,7 +22,7 @@ Or browse via `/plugin` → Discover.
 
 | Plugin | Description |
 | :--- | :--- |
-| `mentionlytics-api` | Query the Mentionlytics API (v2): mentions, top influencers, trending keywords, geo/language breakdowns, AI daily summaries, analytics (EMV, MQI), trackers, and account usage — with auth rotation and rate-limit handling built in. |
+| `mentionlytics-api` | Query and manage a Mentionlytics account through the Mentionlytics API (v2): mentions, sentiment, top mentioners and keywords, geo/language breakdowns, AI daily summaries, analytics (EMV, MQI), audience demographics, AI Visibility answers and citations, account usage, and creating, updating, pausing and deleting trackers and tracker groups — with token refresh and rate-limit handling built in. |
 
 ## Setup
 
